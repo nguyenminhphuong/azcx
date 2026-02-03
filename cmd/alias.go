@@ -4,20 +4,23 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/nguyenminhphuong/azcx/internal/azure"
 	"github.com/nguyenminhphuong/azcx/internal/config"
+	"github.com/nguyenminhphuong/azcx/internal/ui"
 	"github.com/spf13/cobra"
 )
 
 var deleteAlias string
 
 var aliasCmd = &cobra.Command{
-	Use:   "alias [alias=subscription]",
+	Use:   "alias [alias | alias=subscription]",
 	Short: "Manage subscription aliases",
 	Long: `Create or manage short aliases for subscription names.
 
 Examples:
   azcx alias                          # List all aliases
-  azcx alias dev=my-dev-subscription  # Create alias 'dev'
+  azcx alias dev                      # Interactive: select subscription for alias 'dev'
+  azcx alias dev=my-dev-subscription  # Create alias 'dev' explicitly
   azcx alias -d dev                   # Delete alias 'dev'`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.Load()
@@ -52,13 +55,49 @@ Examples:
 
 		// Create alias
 		parts := strings.SplitN(args[0], "=", 2)
-		if len(parts) != 2 {
-			return fmt.Errorf("invalid format. Use: alias=subscription")
-		}
 
-		alias, subscription := parts[0], parts[1]
-		if alias == "" || subscription == "" {
-			return fmt.Errorf("alias and subscription cannot be empty")
+		var alias, subscription string
+
+		if len(parts) == 2 {
+			// Explicit format: alias=subscription
+			alias, subscription = parts[0], parts[1]
+			if alias == "" || subscription == "" {
+				return fmt.Errorf("alias and subscription cannot be empty")
+			}
+		} else {
+			// Interactive format: just alias name, select subscription
+			alias = args[0]
+			if alias == "" {
+				return fmt.Errorf("alias cannot be empty")
+			}
+
+			// Load subscriptions for interactive selection
+			profile, err := azure.LoadProfile()
+			if err != nil {
+				return err
+			}
+
+			if len(profile.Subscriptions) == 0 {
+				return fmt.Errorf("no subscriptions found. Run 'az login' first")
+			}
+
+			names := make([]string, len(profile.Subscriptions))
+			for i, sub := range profile.Subscriptions {
+				names[i] = sub.Name
+			}
+
+			fmt.Printf("Select subscription for alias '%s':\n", alias)
+			selected, err := ui.FuzzySelect(names)
+			if err != nil {
+				return err
+			}
+
+			if selected == "" {
+				fmt.Println("Cancelled")
+				return nil
+			}
+
+			subscription = selected
 		}
 
 		cfg.Aliases[alias] = subscription

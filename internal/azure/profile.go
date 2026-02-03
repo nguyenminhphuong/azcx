@@ -26,7 +26,13 @@ type Profile struct {
 }
 
 // GetProfilePath returns the path to the Azure profile file
+// Supports AZURE_CONFIG_DIR environment variable (same as Azure CLI)
 func GetProfilePath() (string, error) {
+	// Check for custom Azure config directory
+	if configDir := os.Getenv("AZURE_CONFIG_DIR"); configDir != "" {
+		return filepath.Join(configDir, "azureProfile.json"), nil
+	}
+
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
