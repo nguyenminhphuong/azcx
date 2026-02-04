@@ -83,7 +83,7 @@ Examples:
 
 			names := make([]string, len(profile.Subscriptions))
 			for i, sub := range profile.Subscriptions {
-				names[i] = sub.Name
+				names[i] = sub.GetName()
 			}
 
 			fmt.Printf("Select subscription for alias '%s':\n", alias)

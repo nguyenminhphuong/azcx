@@ -70,7 +70,7 @@ func runCurrent() error {
 		return nil
 	}
 
-	fmt.Printf("%s (%s)\n", current.Name, current.ID)
+	fmt.Printf("%s (%s)\n", current.GetName(), current.GetID())
 	return nil
 }
 
@@ -82,10 +82,10 @@ func runList() error {
 
 	for _, sub := range profile.Subscriptions {
 		marker := "  "
-		if sub.IsDefault {
+		if sub.IsDefault() {
 			marker = "* "
 		}
-		fmt.Printf("%s%s\n", marker, sub.Name)
+		fmt.Printf("%s%s\n", marker, sub.GetName())
 	}
 	return nil
 }
@@ -122,7 +122,7 @@ func runSwitch(target string) error {
 		if cfg == nil {
 			cfg = &config.Config{Aliases: make(map[string]string)}
 		}
-		cfg.PreviousSubscription = current.Name
+		cfg.PreviousSubscription = current.GetName()
 		config.Save(cfg)
 	}
 
@@ -151,7 +151,7 @@ func runInteractive() error {
 
 	names := make([]string, len(profile.Subscriptions))
 	for i, sub := range profile.Subscriptions {
-		names[i] = sub.Name
+		names[i] = sub.GetName()
 	}
 
 	selected, err := ui.FuzzySelect(names)

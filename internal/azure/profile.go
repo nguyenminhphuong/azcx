@@ -8,21 +8,13 @@ import (
 	"strings"
 )
 
-// Subscription represents an Azure subscription
-type Subscription struct {
-	ID               string `json:"id"`
-	Name             string `json:"name"`
-	State            string `json:"state"`
-	TenantID         string `json:"tenantId"`
-	IsDefault        bool   `json:"isDefault"`
-	HomeTenantID     string `json:"homeTenantId,omitempty"`
-	ManagedByTenants []any  `json:"managedByTenants,omitempty"`
-}
+// Subscription represents an Azure subscription with all fields preserved
+type Subscription map[string]interface{}
 
-// Profile represents the Azure CLI profile
+// Profile represents the Azure CLI profile with all fields preserved
 type Profile struct {
-	InstallationID string         `json:"installationId"`
-	Subscriptions  []Subscription `json:"subscriptions"`
+	raw           map[string]interface{}
+	Subscriptions []Subscription
 }
 
 // GetProfilePath returns the path to the Azure profile file
@@ -55,12 +47,24 @@ func LoadProfile() (*Profile, error) {
 	// Handle BOM (Azure CLI sometimes adds it)
 	data = []byte(strings.TrimPrefix(string(data), "\ufeff"))
 
-	var profile Profile
-	if err := json.Unmarshal(data, &profile); err != nil {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("failed to parse Azure profile: %w", err)
 	}
 
-	return &profile, nil
+	profile := &Profile{raw: raw}
+
+	// Extract subscriptions
+	if subs, ok := raw["subscriptions"].([]interface{}); ok {
+		profile.Subscriptions = make([]Subscription, len(subs))
+		for i, sub := range subs {
+			if subMap, ok := sub.(map[string]interface{}); ok {
+				profile.Subscriptions[i] = Subscription(subMap)
+			}
+		}
+	}
+
+	return profile, nil
 }
 
 // SaveProfile saves the Azure profile to disk
@@ -70,7 +74,14 @@ func SaveProfile(profile *Profile) error {
 		return err
 	}
 
-	data, err := json.MarshalIndent(profile, "", "  ")
+	// Update subscriptions in raw data
+	subs := make([]interface{}, len(profile.Subscriptions))
+	for i, sub := range profile.Subscriptions {
+		subs[i] = map[string]interface{}(sub)
+	}
+	profile.raw["subscriptions"] = subs
+
+	data, err := json.MarshalIndent(profile.raw, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -81,7 +92,7 @@ func SaveProfile(profile *Profile) error {
 // GetCurrentSubscription returns the current default subscription
 func (p *Profile) GetCurrentSubscription() *Subscription {
 	for i := range p.Subscriptions {
-		if p.Subscriptions[i].IsDefault {
+		if p.Subscriptions[i].IsDefault() {
 			return &p.Subscriptions[i]
 		}
 	}
@@ -95,11 +106,11 @@ func (p *Profile) SetSubscription(nameOrID string) error {
 
 	for i := range p.Subscriptions {
 		sub := &p.Subscriptions[i]
-		if strings.ToLower(sub.Name) == nameOrIDLower || strings.ToLower(sub.ID) == nameOrIDLower {
-			sub.IsDefault = true
+		if strings.ToLower(sub.GetName()) == nameOrIDLower || strings.ToLower(sub.GetID()) == nameOrIDLower {
+			sub.SetDefault(true)
 			found = true
 		} else {
-			sub.IsDefault = false
+			sub.SetDefault(false)
 		}
 	}
 
@@ -110,14 +121,29 @@ func (p *Profile) SetSubscription(nameOrID string) error {
 	return nil
 }
 
-// FindSubscription finds a subscription by name or ID
-func (p *Profile) FindSubscription(nameOrID string) *Subscription {
-	nameOrIDLower := strings.ToLower(nameOrID)
-	for i := range p.Subscriptions {
-		sub := &p.Subscriptions[i]
-		if strings.ToLower(sub.Name) == nameOrIDLower || strings.ToLower(sub.ID) == nameOrIDLower {
-			return sub
-		}
+// Helper methods for Subscription
+
+func (s Subscription) GetID() string {
+	if id, ok := s["id"].(string); ok {
+		return id
 	}
-	return nil
+	return ""
+}
+
+func (s Subscription) GetName() string {
+	if name, ok := s["name"].(string); ok {
+		return name
+	}
+	return ""
+}
+
+func (s Subscription) IsDefault() bool {
+	if isDefault, ok := s["isDefault"].(bool); ok {
+		return isDefault
+	}
+	return false
+}
+
+func (s Subscription) SetDefault(value bool) {
+	s["isDefault"] = value
 }
